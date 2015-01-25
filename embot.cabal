@@ -21,6 +21,7 @@ executable embot
                 TupleSections
                 RecordWildCards
                 LambdaCase
+                ScopedTypeVariables
 
     build-depends: base                          >= 4          && < 5
                  , classy-prelude                >= 0.10.2
@@ -57,6 +58,9 @@ executable embot
                  , openssl-streams
                  , network
                  , io-streams
+                 , scientific
+                 , yaml
+                 , text-show
 
     main-is:           main.hs
     hs-source-dirs:    src

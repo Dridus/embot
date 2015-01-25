@@ -1,4 +1,8 @@
 cabal.sandbox.config
 .cabal-sandbox/
 dist/
+embot.yml
+codex.tags
+tags
+hscope.out
 

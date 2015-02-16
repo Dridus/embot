@@ -1,0 +1,4 @@
+#! /usr/bin/env zsh
+
+dist/build/embot/embot $@
+

@@ -3,14 +3,17 @@ module Embot.SlackAPI where
 
 import           ClassyPrelude (Bool(True, False), Int, (&&), (||), concatMap, map, not)
 import           Control.Applicative ((<$>), (<*>), pure)
-import           Control.Lens.TH (makeLenses)
+import           Control.Lens.TH (makeLenses, makePrisms)
 import           Control.Monad ((>>=), fail)
-import           Data.Aeson ((.:), (.:?), (.!=), Value(Object), Object, FromJSON(parseJSON), ToJSON(toJSON), object, withText, withObject, withScientific, withText)
+import           Data.Aeson ((.:), (.:?), (.=), (.!=), Value(Object, String), Object, FromJSON(parseJSON), ToJSON(toJSON), object, withText, withObject, withScientific, withText)
 import           Data.Aeson.Types (Parser)
+import           Data.Eq (Eq)
 import           Data.Function (($), (.), flip)
 import qualified Data.HashMap.Strict as HM
+import           Data.Int (Int32)
 import           Data.Maybe (Maybe(Just, Nothing), maybeToList)
 import           Data.Monoid ((<>))
+import           Data.Ord (Ord)
 import           Data.Proxy (Proxy(Proxy))
 import           Data.Scientific (toBoundedInteger)
 import           Data.Text (Text, unpack, isPrefixOf, stripPrefix)
@@ -27,12 +30,12 @@ instance Show Value where
 instance (Show k, Show v) => Show (HM.HashMap k v) where
     showbPrec prec = ("HM.fromList " <>) . showbPrec prec . HM.toList
 
-newtype TS = TS { unTS :: Text }
+newtype TS = TS { unTS :: Text } deriving (Eq, Ord)
 instance FromJSON TS where
     parseJSON = withText "timestamp" $ pure . TS
 deriveShow ''TS
 
-newtype Time = Time { unTime :: Word32 }
+newtype Time = Time { unTime :: Word32 } deriving (Eq, Ord)
 instance FromJSON Time where
     parseJSON = withScientific "time" $ \ s ->
         case toBoundedInteger s of
@@ -40,9 +43,11 @@ instance FromJSON Time where
             Nothing  -> fail . unpack $ "out of bound unix time " <> show (FromStringShow s)
 deriveShow ''Time
 
-newtype ID a = ID { unID :: Text }
+newtype ID a = ID { unID :: Text } deriving (Eq)
 instance FromJSON (ID a) where
     parseJSON = withText "id" $ pure . ID
+instance ToJSON (ID a) where
+    toJSON = String . unID
 deriveShow ''ID
 
 data Response a = ResponseNotOk !Text | ResponseOk a
@@ -164,7 +169,7 @@ data Message = Message
     , _messageEventTS     :: Maybe TS
     , _messageHidden      :: Bool
     , _messageAttachments :: [Attachment]
-    ,_ messageInviter     :: Maybe (ID User)
+    , _messageInviter     :: Maybe (ID User)
     }
 
 data MessageSubtype
@@ -254,6 +259,8 @@ data FileComment = FileComment
 
 data RtmEvent
     = RtmHello
+    | RtmReplyOk Word64 (Maybe TS) (Maybe Text)
+    | RtmReplyNotOk Word64 Int32 Text
     | RtmMessage Message
     | RtmChannelMarked (ConversationMarked Channel)
     | RtmChannelCreated Channel
@@ -378,7 +385,13 @@ data TeamDomainChange = TeamDomainChange
 
 data EmailDomainChanged = EmailDomainChanged
     { _emailDomainChangedEmailDomain :: Text
-    , _EmailDomainChangedEventTS     :: TS
+    , _emailDomainChangedEventTS     :: TS
+    }
+
+data RtmSendMessage = RtmSendMessage
+    { _sendMessageSeqnum       :: Word64
+    , _sendMessageConversation :: ID Conversation
+    , _sendMessageText         :: Text
     }
 
 class SlackTyped a where
@@ -414,7 +427,6 @@ asGroupID = asTypedID
 asIMID :: ID Conversation -> Maybe (ID IM)
 asIMID = asTypedID
 
-
 makeLenses ''RtmStartRequest
 makeLenses ''RtmStartRp
 makeLenses ''Self
@@ -432,6 +444,7 @@ makeLenses ''AttachmentField
 makeLenses ''SlackTracked
 makeLenses ''File
 makeLenses ''FileComment
+makePrisms ''RtmEvent
 makeLenses ''ConversationMarked
 makeLenses ''ConversationUser
 makeLenses ''ConversationHistoryChanged
@@ -443,8 +456,10 @@ makeLenses ''PresenceChange
 makeLenses ''UserTyping
 makeLenses ''PrefChange
 makeLenses ''Star
+makePrisms ''StarItem
 makeLenses ''TeamDomainChange
 makeLenses ''EmailDomainChanged
+makeLenses ''RtmSendMessage
 
 deriveShow ''RtmStartRequest
 deriveShow ''RtmStartRp
@@ -481,6 +496,7 @@ deriveShow ''Star
 deriveShow ''StarItem
 deriveShow ''TeamDomainChange
 deriveShow ''EmailDomainChanged
+deriveShow ''RtmSendMessage
 
 instance ToJSON RtmStartRequest where
     toJSON (RtmStartRequest { .. }) = object
@@ -622,6 +638,7 @@ instance FromJSON Message where
         <*> o .:? "event_ts"
         <*> o .:? "hidden" .!= False
         <*> o .:? "attachments" .!= []
+        <*> o .:? "inviter"
 
 instance FromJSON MessageSubtype where
     parseJSON = withText "message subtype" $ \ case
@@ -728,60 +745,67 @@ instance FromJSON RtmEvent where
         let
             recur :: FromJSON a => Parser a
             recur = parseJSON v
-        in flip (withObject "event object") v $ \ o -> o .: "type" >>= asText >>= \ case
-            "hello"                   -> pure RtmHello
-            "message"                 -> RtmMessage <$> recur
-            "channel_marked"          -> RtmChannelMarked <$> recur
-            "channel_created"         -> RtmChannelCreated <$> o .: "channel"
-            "channel_joined"          -> RtmChannelJoined <$> o .: "channel"
-            "channel_left"            -> RtmChannelLeft <$> o .: "channel"
-            "channel_deleted"         -> RtmChannelDeleted <$> o .: "channel"
-            "channel_rename"          -> RtmChannelRenamed <$> o .: "channel"
-            "channel_archive"         -> RtmChannelArchive <$> recur
-            "channel_unarchive"       -> RtmChannelUnarchive <$> recur
-            "channel_history_changed" -> RtmChannelHistoryChanged <$> recur
-            "im_created"              -> RtmImCreated <$> recur
-            "im_open"                 -> RtmImOpen <$> recur
-            "im_close"                -> RtmImClose <$> recur
-            "im_marked"               -> RtmImMarked <$> recur
-            "im_history_changed"      -> RtmImHistoryChanged <$> recur
-            "group_joined"            -> RtmGroupJoined <$> o .: "channel"
-            "group_left"              -> RtmGroupLeft <$> o .: "channel"
-            "group_open"              -> RtmGroupOpen <$> recur
-            "group_close"             -> RtmGroupClose <$> recur
-            "group_archive"           -> RtmGroupArchive <$> o .: "channel"
-            "group_unarchive"         -> RtmGroupUnarchive <$> o .: "channel"
-            "group_rename"            -> RtmGroupRename <$> o .: "channel"
-            "group_marked"            -> RtmGroupMarked <$> recur
-            "group_history_changed"   -> RtmGroupHistoryChanged <$> recur
-            "file_created"            -> RtmFileCreated <$> o .: "file"
-            "file_shared"             -> RtmFileShared <$> o .: "file"
-            "file_unshared"           -> RtmFileUnshared <$> o .: "file"
-            "file_public"             -> RtmFilePublic <$> o .: "file"
-            "file_private"            -> RtmFilePrivate <$> o .: "file"
-            "file_change"             -> RtmFileChange <$> o .: "file"
-            "file_deleted"            -> RtmFileDeleted <$> recur
-            "file_comment_added"      -> RtmFileCommentAdded <$> recur
-            "file_comment_edited"     -> RtmFileCommentEdited <$> recur
-            "file_comment_deleted"    -> RtmFileCommentDeleted <$> recur
-            "presence_change"         -> RtmPresenceChange <$> recur
-            "manual_presence_change"  -> RtmManualPresenceChange <$> o .: "presence"
-            "user_typing"             -> RtmUserTyping <$> recur
-            "pref_change"             -> RtmPrefChange <$> recur
-            "user_change"             -> RtmUserChange <$> o .: "user"
-            "team_join"               -> RtmTeamJoin <$> o .: "user"
-            "star_added"              -> RtmStarAdded <$> recur
-            "star_removed"            -> RtmStarRemoved <$> recur
-            "emoji_changed"           -> RtmEmojiChanged <$> o .: "event_ts"
-            "commands_changed"        -> RtmCommandsChanged <$> o .: "event_ts"
-            "team_pref_change"        -> RtmTeamPrefChange <$> recur
-            "team_rename"             -> RtmTeamRename <$> o .: "name"
-            "team_domain_change"      -> RtmTeamDomainChange <$> recur
-            "email_domain_changed"    -> RtmEmailDomainChanged <$> recur
-            "bot_added"               -> RtmBotAdded <$> o .: "bot"
-            "bot_changed"             -> RtmBotChanged <$> o .: "bot"
-            "accounts_changed"        -> pure RtmAccountsChanged
-            other                     -> fail . unpack $ "unknown RTM event type " <> other
+        in flip (withObject "event object") v $ \ o ->
+            o .:? "reply_to" >>= \ case
+                Just seqnum ->
+                    o .: "ok" >>= \ case
+                        True  -> RtmReplyOk seqnum <$> o .:? "ts" <*> o .:? "text"
+                        False -> o .: "error" >>= (withObject "RTM error" $ \ o2 -> RtmReplyNotOk seqnum <$> o2 .: "code" <*> o2 .: "msg")
+                Nothing ->
+                    o .: "type" >>= asText >>= \ case
+                        "hello"                   -> pure RtmHello
+                        "message"                 -> RtmMessage <$> recur
+                        "channel_marked"          -> RtmChannelMarked <$> recur
+                        "channel_created"         -> RtmChannelCreated <$> o .: "channel"
+                        "channel_joined"          -> RtmChannelJoined <$> o .: "channel"
+                        "channel_left"            -> RtmChannelLeft <$> o .: "channel"
+                        "channel_deleted"         -> RtmChannelDeleted <$> o .: "channel"
+                        "channel_rename"          -> RtmChannelRenamed <$> o .: "channel"
+                        "channel_archive"         -> RtmChannelArchive <$> recur
+                        "channel_unarchive"       -> RtmChannelUnarchive <$> recur
+                        "channel_history_changed" -> RtmChannelHistoryChanged <$> recur
+                        "im_created"              -> RtmImCreated <$> recur
+                        "im_open"                 -> RtmImOpen <$> recur
+                        "im_close"                -> RtmImClose <$> recur
+                        "im_marked"               -> RtmImMarked <$> recur
+                        "im_history_changed"      -> RtmImHistoryChanged <$> recur
+                        "group_joined"            -> RtmGroupJoined <$> o .: "channel"
+                        "group_left"              -> RtmGroupLeft <$> o .: "channel"
+                        "group_open"              -> RtmGroupOpen <$> recur
+                        "group_close"             -> RtmGroupClose <$> recur
+                        "group_archive"           -> RtmGroupArchive <$> o .: "channel"
+                        "group_unarchive"         -> RtmGroupUnarchive <$> o .: "channel"
+                        "group_rename"            -> RtmGroupRename <$> o .: "channel"
+                        "group_marked"            -> RtmGroupMarked <$> recur
+                        "group_history_changed"   -> RtmGroupHistoryChanged <$> recur
+                        "file_created"            -> RtmFileCreated <$> o .: "file"
+                        "file_shared"             -> RtmFileShared <$> o .: "file"
+                        "file_unshared"           -> RtmFileUnshared <$> o .: "file"
+                        "file_public"             -> RtmFilePublic <$> o .: "file"
+                        "file_private"            -> RtmFilePrivate <$> o .: "file"
+                        "file_change"             -> RtmFileChange <$> o .: "file"
+                        "file_deleted"            -> RtmFileDeleted <$> recur
+                        "file_comment_added"      -> RtmFileCommentAdded <$> recur
+                        "file_comment_edited"     -> RtmFileCommentEdited <$> recur
+                        "file_comment_deleted"    -> RtmFileCommentDeleted <$> recur
+                        "presence_change"         -> RtmPresenceChange <$> recur
+                        "manual_presence_change"  -> RtmManualPresenceChange <$> o .: "presence"
+                        "user_typing"             -> RtmUserTyping <$> recur
+                        "pref_change"             -> RtmPrefChange <$> recur
+                        "user_change"             -> RtmUserChange <$> o .: "user"
+                        "team_join"               -> RtmTeamJoin <$> o .: "user"
+                        "star_added"              -> RtmStarAdded <$> recur
+                        "star_removed"            -> RtmStarRemoved <$> recur
+                        "emoji_changed"           -> RtmEmojiChanged <$> o .: "event_ts"
+                        "commands_changed"        -> RtmCommandsChanged <$> o .: "event_ts"
+                        "team_pref_change"        -> RtmTeamPrefChange <$> recur
+                        "team_rename"             -> RtmTeamRename <$> o .: "name"
+                        "team_domain_change"      -> RtmTeamDomainChange <$> recur
+                        "email_domain_changed"    -> RtmEmailDomainChanged <$> recur
+                        "bot_added"               -> RtmBotAdded <$> o .: "bot"
+                        "bot_changed"             -> RtmBotChanged <$> o .: "bot"
+                        "accounts_changed"        -> pure RtmAccountsChanged
+                        other                     -> fail . unpack $ "unknown RTM event type " <> other
 
 
 instance FromJSON (ConversationMarked a) where
@@ -861,3 +885,10 @@ instance FromJSON EmailDomainChanged where
         <$> o .: "email_domain"
         <*> o .: "event_ts"
 
+instance ToJSON RtmSendMessage where
+    toJSON (RtmSendMessage seqnum conversation message) = object
+        [ "type"    .= ("message" :: Text)
+        , "id"      .= seqnum
+        , "channel" .= conversation
+        , "text"    .= message
+        ]

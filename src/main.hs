@@ -1,7 +1,7 @@
 module Main where
 
 import           Control.Applicative ((<$>), pure)
-import           Control.Lens ((%=), (.=), (^.), use, view)
+import           Control.Lens ((+=), (.=), (^.), use, view)
 import           Control.Lens.TH (makeLenses)
 import           Control.Monad ((>>=), fail, forever, forM_)
 import           Control.Monad.Logger (Loc, LogLevel, LogSource, LoggingT(runLoggingT), defaultLogStr, logDebug, logInfo, logOther, logWarn)
@@ -30,7 +30,7 @@ import qualified Network.WebSockets.Stream as WS
 import           Network.Wreq (FormParam((:=)), post, asJSON, responseBody)
 import qualified OpenSSL                   as SSL
 import qualified OpenSSL.Session           as SSL
-import           Prelude (Int, IO, String, (+))
+import           Prelude (Int, IO, String)
 import           System.Directory (createDirectoryIfMissing)
 import qualified System.IO.Streams         as Streams
 import qualified System.IO.Streams.SSL     as Streams
@@ -42,13 +42,15 @@ import           Text.Show.Text (show)
 
 import qualified Embot.SlackAPI as Slack
 import           Embot.Action (Action(SendMessage))
-import           Embot.Core (EmbotIO(unEmbotIO), InterceptorWithState, readGlobalConfig, apiToken)
+import           Embot.Core (EmbotIO(unEmbotIO), Env, InterceptorState(InterceptorState), InterceptorWithState, readGlobalConfig, apiToken)
 import           Embot.Event (Event(Event), EventDetail(ReceivedMessage))
 import           Embot.Plugins (initializeEnv, initializeInterceptors)
 
 import           Paths_embot (version)
-data AppState (is :: [*]) = AppState
-    { _appInterceptorState :: HList is
+
+data AppState (es :: [*]) (is :: [*]) = AppState
+    { _appEnv              :: Env es
+    , _appInterceptorState :: HList is
     , _appSequenceNumber   :: Word64
     }
 
@@ -111,9 +113,9 @@ emitLogMessage loggers loc src level msg = do
         pushLogStr logger str
 
 embotApp :: forall (es :: [*]) (is :: [*]). (forall a. EmbotIO a -> IO a) -> TIP es -> InterceptorWithState es is -> WS.ClientApp ()
-embotApp inEmbotIO env (interceptor, initialState) conn = do
+embotApp inEmbotIO initialEnv (interceptor, initialState) conn = do
     inEmbotIO . $logInfo $ "RTM connected"
-    inEmbotIO . flip evalStateT (AppState initialState 1) . forever $ do
+    inEmbotIO . flip evalStateT (AppState initialEnv initialState 1) . forever $ do
         msg <- liftIO $ WS.receiveData conn
         $(logOther "Trace") $ DTE.decodeUtf8 msg
         case Aeson.eitherDecode' (LBS.fromStrict msg) of
@@ -122,18 +124,20 @@ embotApp inEmbotIO env (interceptor, initialState) conn = do
                 $(logOther "Trace") $ " => " <> show (slackEvent :: Slack.RtmEvent)
                 process slackEvent
   where
-    handleEvent :: Event -> StateT (AppState is) EmbotIO ()
+    handleEvent :: Event -> StateT (AppState es is) EmbotIO ()
     handleEvent event = do
         state <- use appInterceptorState
-        ((_, state'), actions) <- lift $ execRWST (interceptor event) () (env, state)
+        env <- use appEnv
+        (InterceptorState env' state', actions) <- lift $ execRWST (interceptor event) () (InterceptorState env state)
         appInterceptorState .= state'
+        appEnv .= env'
         forM_ actions $ \ case
             SendMessage conversation message -> do
                 seqnum <- use appSequenceNumber
                 liftIO $ WS.sendTextData conn (Aeson.encode $ Slack.RtmSendMessage seqnum conversation message)
-                appSequenceNumber %= (+1)
+                appSequenceNumber += 1
 
-    process :: Slack.RtmEvent -> StateT (AppState is) EmbotIO ()
+    process :: Slack.RtmEvent -> StateT (AppState es is) EmbotIO ()
     process (Slack.RtmMessage message) = handleEvent . Event False . ReceivedMessage $ message
     process _ = pure ()
 

@@ -2,9 +2,8 @@ module Embot.Plugins.Echo where
 
 import           Control.Applicative (pure)
 import           Control.Category ((.))
-import           Control.Lens ((&), (^.), (^?), (.~))
+import           Control.Lens ((&), (^.), (^?), (.~), views)
 import           Control.Monad ((>>=), fail, guard)
-import           Control.Monad.Reader (asks)
 import           Control.Monad.Writer (tell)
 import           Data.Aeson ((.:))
 import qualified Data.Aeson       as Aeson
@@ -15,15 +14,15 @@ import           Data.HList (HList(HCons))
 import           Data.List (elem)
 import           Data.Maybe (fromMaybe)
 import           Embot.Action (Action(SendMessage))
-import           Embot.Core (InterceptorInitializer, GlobalConfig, EnvElem(getEnv), chain, configRaw)
+import           Embot.Core (InterceptorInitializer, GlobalConfig, EnvElem, chain, configRaw, env)
 import           Embot.Event (_ReceivedMessage, eventConsumed, eventDetail)
 import           Embot.SlackAPI (messageChannel)
 import           Prelude (Bool(True), not)
 import           Text.Show.Text (show)
 
-echoInterceptor :: EnvElem es GlobalConfig => InterceptorInitializer (es :: [*]) () (is :: [*])
+echoInterceptor :: EnvElem es GlobalConfig => InterceptorInitializer es () is
 echoInterceptor (next, nextState) = do
-    configJSON <- asks (configRaw . getEnv)
+    configJSON <- views env configRaw
     conversations <- either fail pure . flip Aeson.parseEither configJSON $ \ o ->
         (o .: "echo") >>= Aeson.withObject "echo configuration" (.: "conversations")
     let intercept event =

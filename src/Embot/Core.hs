@@ -1,14 +1,18 @@
 {-# LANGUAGE OverlappingInstances #-}
+{-|
+A note about names: `es` are "environment elements", `e` being a single environment element.
+`is` are "interceptor states", `i` being a single interceptor state.
+|-}
 module Embot.Core
     ( EmbotIO(unEmbotIO)
     , Env
     , EnvInitializer, globalConfigEnv
     , InterceptorInitializer
-    , Interceptor, InterceptorWithState, chain, nilInterceptorWithState
+    , Interceptor, InterceptorWithState, withNextState, nilInterceptorWithState
     , InterceptorState(InterceptorState), environment, interceptorSV
     , InterceptorM
     , GlobalConfig, configRaw, apiToken, readGlobalConfig
-    , EnvElem(envElem)
+    , EnvElem(envElem), NotEnvElem
     , StateEnv(StateEnvOf, stateEnv), env
     ) where
 
@@ -25,8 +29,8 @@ import           Data.Aeson (FromJSON(parseJSON), (.:), withObject)
 import           Data.Either (Either(Left, Right))
 import           Data.Function (($), (.), const, id)
 import           Data.Functor (Functor)
-import           Data.HList (HList(HCons, HNil), HOccursNot, hHead, hTail)
-import           Data.HList.TIP (HTypeIndexed, TIP(TIP, unTIP), mkTIP, onTIP)
+import           Data.HList (HList(HCons, HNil), HOccursNot, HTypeIndexed, hHead, hTail)
+import           Data.HList.TIP (TIP(TIP, unTIP), onTIP)
 import           Data.Monoid ((<>))
 import           Data.Text (Text, pack)
 import qualified Data.Yaml as Yaml
@@ -53,16 +57,15 @@ deriving instance MonadLogger EmbotIO
 -- `es` is the TIP / HList type, and is list kinded (`[*]`) rather than normally kinded.
 type Env (es :: [*]) = TIP es
 
--- |An `EnvInitializer` is an action which takes some existing shared environment state and adds something to it, possibly using `EmbotIO` to cause side effects.
--- Type `e` is the enviroment that will be added by this initializer, `es` is the already-initialized environment.
+-- |An `EnvInitializer` is an action which takes some existing shared environment state and permutes it (usually by adding something to it), possibly using `EmbotIO` to cause side effects.
 -- Can read the `GlobalConfig`.
-type EnvInitializer e (es :: [*]) = Env es -> ReaderT GlobalConfig EmbotIO (TIP (e ': es))
+type EnvInitializer (es :: [*]) (es' :: [*]) = Env es -> ReaderT GlobalConfig EmbotIO (TIP es')
 
 -- |An `InterceptorInitializer` is an action which prepares an interceptor to be added to the interceptor chain.
 -- An initializer receives some interceptor which should be called next with the event or events.
 -- It also receives the state vector which is building up as type `is` and adds some state for the interceptor `i`
 -- Can read the shared environment created in the previous stage of type `es`
-type InterceptorInitializer (es :: [*]) i (is :: [*]) = InterceptorWithState es is -> ReaderT (Env es) EmbotIO (InterceptorWithState es (i ': is))
+type InterceptorInitializer (es :: [*]) (is :: [*]) (is' :: [*]) = InterceptorWithState es is -> ReaderT (Env es) EmbotIO (InterceptorWithState es is')
 
 -- |An `Interceptor` is a function which executes in response to an event.
 -- Typically chained by composed `InterceptorInitializers
@@ -79,27 +82,11 @@ data InterceptorState (es :: [*]) (is :: [*]) = InterceptorState
 -- |The `InterceptorM` monad is an `EmbotIO` with a `RWST` stacked on top to provide an outlet for `Action`s to take in response to the event as well as access to the shared environment `es` and interceptor state `is`.
 type InterceptorM (es :: [*]) (is :: [*]) a = RWST () [Action] (InterceptorState es is) EmbotIO a
 
--- |Helper for "lifting" an interceptor action at the next link in the chain into the proper `RWST` for the current link in the chain.
--- Typically used in interceptors as `chain next` where `next` is the next interceptor to run.
--- Just applies the tail of the state vector to the action and then puts the dropped state back on afterwards.
-chain :: forall (es :: [*]) (i :: *) (is :: [*]). Interceptor es is -> Interceptor es (i ': is)
-chain next event =
-    RWST $ \ () (InterceptorState es (i `HCons` is)) -> do
-        (a, InterceptorState es' is', w) <- runRWST (next event) () (InterceptorState es is)
-        pure (a, InterceptorState es' (i `HCons` is'), w)
-
--- |`EnvInitializer` which adds the `GlobalConfig` available "out of band" during `Env` initialization but not explicitly afterwards, allowing `InterceptorInitializer` and `Interceptor`s to read it.
-globalConfigEnv :: (HTypeIndexed es, HOccursNot GlobalConfig es) => EnvInitializer GlobalConfig (es :: [*])
-globalConfigEnv env' = do
-    globalConfig <- ask
-    pure . mkTIP . HCons globalConfig . unTIP $ env'
-
--- |The nil interceptor which does nothing and lies at the end of the interceptor chain.
-nilInterceptorWithState :: InterceptorWithState (es :: [*]) '[]
-nilInterceptorWithState = (const $ pure (), HNil)
+-- |`NotEnvElem` can be deduced only when a particular environment `e` doesn't yet exist in environment `es`.
+type NotEnvElem e (es :: [*]) = (HOccursNot e (es :: [*]), HTypeIndexed es)
 
 -- |`EnvElem` can be deduced when a particular environment `e` has been added to the environment `es`.
-class EnvElem (es :: [*]) e where
+class EnvElem e (es :: [*]) where
     -- |`env` is a polymorphic lens that accesses a particular state indexed by its type `e` from the total environment `es`
     envElem :: Lens' (Env es) e
 
@@ -125,11 +112,32 @@ readGlobalConfig = liftIO (Yaml.decodeFileEither "embot.yml") >>= \ case
         fail "Failed to read configuration file"
     Right config -> pure config
 
-instance HTypeIndexed es => EnvElem (e ': es) e where
+-- |Helper for "lifting" an interceptor action at the next link in the chain into the proper `RWST` for the current link in the chain.
+-- Typically used in interceptors as `withNextState next` where `next` is the next interceptor to run.
+-- Just applies the tail of the state vector to the action and then puts the dropped state back on afterwards.
+withNextState :: forall (es :: [*]) (i :: *) (is :: [*]). Interceptor es is -> Interceptor es (i ': is)
+withNextState next event =
+    RWST $ \ () (InterceptorState es (i `HCons` is)) -> do
+        (a, InterceptorState es' is', w) <- runRWST (next event) () (InterceptorState es is)
+        pure (a, InterceptorState es' (i `HCons` is'), w)
+
+-- |`EnvInitializer` which adds the `GlobalConfig` available "out of band" during `Env` initialization but not explicitly afterwards, allowing `InterceptorInitializer` and `Interceptor`s to read it.
+globalConfigEnv :: forall (es :: [*]). NotEnvElem GlobalConfig es => EnvInitializer es (GlobalConfig ': es)
+globalConfigEnv env' = do
+    globalConfig <- ask
+    pure . onTIP (HCons globalConfig) $ env'
+
+-- |The nil interceptor which does nothing and lies at the end of the interceptor chain.
+nilInterceptorWithState :: InterceptorWithState (es :: [*]) '[]
+nilInterceptorWithState = (const $ pure (), HNil)
+
+instance HTypeIndexed es => EnvElem e (e ': es) where
     envElem = lens (hHead . unTIP) (\ (unTIP -> _ `HCons` tail) e -> TIP (e `HCons` tail))
 
-instance (HOccursNot f es, HTypeIndexed es, EnvElem es e) => EnvElem (f ': es) e where
+instance (HOccursNot f es, HTypeIndexed es, EnvElem e es) => EnvElem e (f ': es) where
     envElem = lens (view env . onTIP hTail) (\ tip@(unTIP -> f `HCons` _) e -> onTIP (f `HCons`) (onTIP hTail tip & env .~ e))
+
+
 
 instance StateEnv (InterceptorState es is) where
     type StateEnvOf (InterceptorState es is) = es
@@ -141,5 +149,5 @@ instance StateEnv (Env es) where
 
 -- |Lens from some state `s` which has a shared environment available to a piece of that shared environment of type `e`.
 -- Used in `InterceptorM` actions to get access to the shared environment.
-env :: (StateEnv s, EnvElem (StateEnvOf s) e) => Lens' s e
+env :: (StateEnv s, EnvElem e (StateEnvOf s)) => Lens' s e
 env = stateEnv . envElem

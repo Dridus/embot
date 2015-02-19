@@ -43,7 +43,7 @@ instance FromJSON Time where
             Nothing  -> fail . unpack $ "out of bound unix time " <> show (FromStringShow s)
 deriveShow ''Time
 
-newtype ID a = ID { unID :: Text } deriving (Eq)
+newtype ID a = ID { unID :: Text } deriving (Eq, Ord)
 instance FromJSON (ID a) where
     parseJSON = withText "id" $ pure . ID
 instance ToJSON (ID a) where
@@ -159,17 +159,17 @@ data Bot = Bot
 data Conversation
 
 data Message = Message
-    { _messageChannel     :: Maybe (ID Conversation)
-    , _messageUser        :: ID User
-    , _messageSubtype     :: Maybe MessageSubtype
-    , _messageText        :: Text
-    , _messageTS          :: TS
-    , _messageEdited      :: Maybe MessageEdited
-    , _messageDeletedTS   :: Maybe TS
-    , _messageEventTS     :: Maybe TS
-    , _messageHidden      :: Bool
-    , _messageAttachments :: [Attachment]
-    , _messageInviter     :: Maybe (ID User)
+    { _messageConversation :: Maybe (ID Conversation)
+    , _messageUser         :: ID User
+    , _messageSubtype      :: Maybe MessageSubtype
+    , _messageText         :: Text
+    , _messageTS           :: TS
+    , _messageEdited       :: Maybe MessageEdited
+    , _messageDeletedTS    :: Maybe TS
+    , _messageEventTS      :: Maybe TS
+    , _messageHidden       :: Bool
+    , _messageAttachments  :: [Attachment]
+    , _messageInviter      :: Maybe (ID User)
     }
 
 data MessageSubtype

@@ -28,6 +28,7 @@ executable embot
                 FlexibleInstances
                 RankNTypes
                 NamedFieldPuns
+                ConstraintKinds
 
     build-depends: base                          >= 4          && < 5
                  , classy-prelude                >= 0.10.2
@@ -70,6 +71,8 @@ executable embot
                  , HList
                  , transformers
                  , old-locale
+                 , case-insensitive
+                 , text-icu
 
     main-is:           main.hs
     hs-source-dirs:    src

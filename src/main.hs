@@ -66,17 +66,17 @@ main = do
     inEmbotIO . $logInfo $ "Embot " <> (pack . Show.show $ version) <> " starting"
     inEmbotIO . $logDebug $ "Reading configuration file"
     globalConfig <- inEmbotIO readGlobalConfig
-    inEmbotIO . $logDebug $ "Initializing environment"
-    env <- inEmbotIO $ initializeEnv globalConfig
-    inEmbotIO . $logDebug $ "Initializing interceptors"
-    interceptorWithState <- inEmbotIO $ initializeInterceptors env
     inEmbotIO . $logInfo $ "Connecting to Slack"
     post "https://slack.com/api/rtm.start" ["token" := apiToken globalConfig]
         >>= asJSON >>= pure . view responseBody
         >>= \ case
             Slack.ResponseNotOk err -> fail . unpack $ "rtm.start failed with " <> err
             Slack.ResponseOk rp -> do
-                inEmbotIO . $logDebug $ "rtm.start finished: " <> show rp
+                inEmbotIO . $logDebug $ "rtm.start finished"
+                inEmbotIO . $logDebug $ "Initializing environment"
+                env <- inEmbotIO $ initializeEnv globalConfig rp
+                inEmbotIO . $logDebug $ "Initializing interceptors"
+                interceptorWithState <- inEmbotIO $ initializeInterceptors env
                 let url = rp ^. Slack.rtmStartUrl
                 uri <- case parseURI (unpack url) of
                     Just u -> pure u

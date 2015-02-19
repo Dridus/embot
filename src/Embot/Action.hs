@@ -10,4 +10,3 @@ data Action
 
 deriveShow ''Action
 makePrisms ''Action
-

@@ -24,7 +24,7 @@ data SlackInfo = SlackInfo
     , _infoUsers    :: Map (ID User) User
     , _infoChannels :: Map (ID Channel) Channel
     , _infoGroups   :: Map (ID Group) Group
-    , _infoIms      :: Map (ID IM) IM
+    , _infoIMs      :: Map (ID IM) IM
     , _infoBots     :: Map (ID Bot) Bot
     }
 
@@ -37,7 +37,7 @@ fromStartRp rp = SlackInfo
     , _infoUsers    = Map.fromList . map (view userId    &&& id) $ rp ^. rtmStartUsers
     , _infoChannels = Map.fromList . map (view channelId &&& id) $ rp ^. rtmStartChannels
     , _infoGroups   = Map.fromList . map (view groupId   &&& id) $ rp ^. rtmStartGroups
-    , _infoIms      = Map.fromList . map (view imId      &&& id) $ rp ^. rtmStartIms
+    , _infoIMs      = Map.fromList . map (view imId      &&& id) $ rp ^. rtmStartIms
     , _infoBots     = Map.fromList . map (view botId     &&& id) $ rp ^. rtmStartBots
     }
 

@@ -9,10 +9,12 @@ import Embot.Core (globalConfigEnv, nilInterceptorWithState)
 import Embot.Plugins.Commands (basicCommands, basicCommandsEnv, commandsEnv)
 -- import Embot.Plugins.Echo (echoInterceptor)
 import Embot.Plugins.SlackInfo (slackInfoEnv)
+import Embot.Plugins.SlackInfoCommands (slackInfoCommandsEnv, slackInfoCommands)
 
 initializeEnv globalConfig startRp =
     flip runReaderT globalConfig $
         (   basicCommandsEnv
+        =<< slackInfoCommandsEnv
         =<< commandsEnv
         =<< slackInfoEnv startRp
         =<< globalConfigEnv emptyTIP )
@@ -20,6 +22,6 @@ initializeEnv globalConfig startRp =
 initializeInterceptors env =
     flip runReaderT env $
         -- ( echoInterceptor
-        (   basicCommands
-        $   nilInterceptorWithState )
+        (   slackInfoCommands
+        =<< basicCommands nilInterceptorWithState )
 

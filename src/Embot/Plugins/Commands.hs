@@ -1,6 +1,6 @@
 module Embot.Plugins.Commands where
 
-import           ClassyPrelude (map)
+import           ClassyPrelude (error, map)
 import           Control.Applicative (pure)
 import           Control.Category ((.))
 import           Control.Lens ((&), (^.), (^?), (.~), (%~), use, uses, view)
@@ -28,8 +28,8 @@ import Embot.Plugins.SlackInfo (SlackInfo, infoSelf)
 import Embot.SlackAPI (ID(unID), asIMID, User, selfId, messageConversation, messageText)
 
 data Command = Command
-    { _commandPrimary     :: Text
-    , _commandSecondaries :: [Text]
+    { _commandSyntax      :: Text
+    , _commandPattern     :: Text
     , _commandAccessible  :: ID User -> EmbotIO Bool
     , _commandSummary     :: Text
     }
@@ -39,11 +39,36 @@ type Commands = Set Command
 makeLenses ''Command
 
 instance Eq Command where
-    (view commandPrimary -> a) == (view commandPrimary -> b) =
+    (view commandSyntax -> a) == (view commandSyntax -> b) =
         a == b
 instance Ord Command where
-    (view commandPrimary -> a) `compare` (view commandPrimary -> b) =
+    (view commandSyntax -> a) `compare` (view commandSyntax -> b) =
         (CI.mk a) `compare` (CI.mk b)
+
+wordsToPattern :: Text -> Text
+wordsToPattern =
+      T.intercalate "\\s+"
+    . map (fromMaybe (error "no match group zero?") . ICU.group 0)
+    . ICU.findAll "\\S+"
+
+alwaysAccessible :: ID User -> EmbotIO Bool
+alwaysAccessible = const $ pure True
+
+simpleCommand :: Text -> Text -> Command
+simpleCommand words summary = Command
+    { _commandSyntax     =                words
+    , _commandPattern    = wordsToPattern words
+    , _commandAccessible = alwaysAccessible
+    , _commandSummary    = summary
+    }
+
+devCommand :: Text -> Text -> Command
+devCommand words summary = Command
+    { _commandSyntax     =                  "dev " <> words
+    , _commandPattern    = wordsToPattern $ "dev " <> words
+    , _commandAccessible = alwaysAccessible -- FIXME toggle accessibility with some per-user switch to hide away maintenance commands
+    , _commandSummary    = summary
+    }
 
 commandsEnv :: NotEnvElem Commands es => EnvInitializer es (Commands ': es)
 commandsEnv = pure . onTIP (HCons Set.empty)
@@ -52,12 +77,7 @@ addCommand :: EnvElem Commands es => Command -> Env (es :: [*]) -> Env es
 addCommand cmd = envElem %~ Set.insert cmd
 
 helpCommand :: Command
-helpCommand = Command
-    { _commandPrimary = "help"
-    , _commandSecondaries = []
-    , _commandAccessible = const $ pure True
-    , _commandSummary = "Show help for commands."
-    }
+helpCommand = simpleCommand "help" "Show help for commands."
 
 basicCommandsEnv :: EnvElem Commands es => EnvInitializer es es
 basicCommandsEnv =
@@ -67,23 +87,17 @@ basicCommands :: (EnvElem Commands es, EnvElem SlackInfo es) => InterceptorIniti
 basicCommands (next, nextState) = pure $ (onCommand helpCommand handleHelp next, nextState)
   where
     handleHelp event = do
-        sid <- use $ env . infoSelf . selfId
-        commands <- uses env Set.toAscList
+        sid                <- use $ env . infoSelf . selfId
+        commands           <- uses env Set.toAscList
         accessibleCommands <- filterM (lift . ($ sid) . view commandAccessible) commands
         replyTo event $ accessibleCommands >>= \ command ->
-            let firstLine = T.justifyLeft 20 ' ' (command ^. commandPrimary) <> " " <> (command ^. commandSummary)
-                tailLines = case command ^. commandSecondaries of
-                     [] -> []
-                     words -> [T.intercalate ", " words]
-            in firstLine : tailLines
+            [command ^. commandSyntax, "    " <> command ^. commandSummary]
         next $ event & eventConsumed .~ True
 
 onCommand :: (EnvElem Commands es, EnvElem SlackInfo es) => Command -> Interceptor es is -> Interceptor es is -> Interceptor es is
 onCommand command =
-    let words          = (command ^. commandPrimary) : (command ^. commandSecondaries)
-        wordsExpr      = T.intercalate "|" $ map (\ word -> "\\Q" <> word <> "\\E") words
-        mentionPattern = ICU.regex [ICU.CaseInsensitive] ("<@(U[0-9A-Z]+)>[^a-zA-Z]*(?:" <> wordsExpr <> ")\\b")
-        dmPattern      = ICU.regex [ICU.CaseInsensitive] ("^\\s*(?:" <> wordsExpr <> ")\\b")
+    let mentionPattern = ICU.regex [ICU.CaseInsensitive] ("<@(U[0-9A-Z]+)>[^a-zA-Z]*(?:" <> command ^. commandPattern <> ")\\b")
+        dmPattern      = ICU.regex [ICU.CaseInsensitive] ("^\\s*(?:" <> command ^. commandPattern <> ")\\b")
     in \ onMatch orElse ->
             \ event -> do
                 sid <- use $ env . infoSelf . selfId

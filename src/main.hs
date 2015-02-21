@@ -132,9 +132,9 @@ embotApp inEmbotIO initialEnv (interceptor, initialState) conn = do
         appInterceptorState .= state'
         appEnv .= env'
         forM_ actions $ \ case
-            SendMessage conversation message -> do
+            SendMessage chat message -> do
                 seqnum <- use appSequenceNumber
-                liftIO $ WS.sendTextData conn (Aeson.encode $ Slack.RtmSendMessage seqnum conversation message)
+                liftIO $ WS.sendTextData conn (Aeson.encode $ Slack.RtmSendMessage seqnum chat message)
                 appSequenceNumber += 1
 
     process :: Slack.RtmEvent -> StateT (AppState es is) EmbotIO ()

@@ -15,22 +15,22 @@ import           Data.Maybe (fromMaybe)
 import           Embot.Action (Action(SendMessage))
 import           Embot.Core (InterceptorInitializer, GlobalConfig, EnvElem, configRaw, env)
 import           Embot.Event (_ReceivedMessage, eventConsumed, eventDetail)
-import           Embot.SlackAPI (messageConversation)
+import           Embot.SlackAPI (messageChat)
 import           Prelude (Bool(True), not)
 import           Text.Show.Text (show)
 
 echoInterceptor :: EnvElem GlobalConfig es => InterceptorInitializer es is is
 echoInterceptor (next, nextState) = do
     configJSON <- views env configRaw
-    conversations <- either fail pure . flip Aeson.parseEither configJSON $ \ o ->
-        (o .: "echo") >>= Aeson.withObject "echo configuration" (.: "conversations")
+    chats <- either fail pure . flip Aeson.parseEither configJSON $ \ o ->
+        (o .: "echo") >>= Aeson.withObject "echo configuration" (.: "chats")
     let intercept event =
             fromMaybe (next event) $ do
                 guard . not $ event ^. eventConsumed
                 message <- event ^? eventDetail . _ReceivedMessage
-                conversationId <- message ^. messageConversation
-                guard $ conversationId `elem` conversations
+                chatId <- message ^. messageChat
+                guard $ chatId `elem` chats
                 pure $ do
-                    tell [SendMessage conversationId $ show message]
+                    tell [SendMessage chatId $ show message]
                     next $ event & eventConsumed .~ True
     pure (intercept, nextState)

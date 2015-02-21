@@ -14,7 +14,7 @@ import qualified Data.Text as T
 import           Embot.Action (Action(SendMessage))
 import           Embot.Core (InterceptorM)
 import           Embot.Event (Event, eventDetail, _ReceivedMessage)
-import           Embot.SlackAPI (ID, messageConversation, messageText, User)
+import           Embot.SlackAPI (ID, messageChat, messageText, User)
 import           Text.Show.Text (show)
 
 mentionedInEvent :: ID User -> Event -> Bool
@@ -26,5 +26,5 @@ uid `mentionedInEvent` event =
 replyTo :: Event -> [Text] -> InterceptorM es is ()
 replyTo event messages = fromMaybe (pure ()) $ do
     message <- event ^? eventDetail . _ReceivedMessage
-    conversationId <- message ^. messageConversation
-    pure . tell $ map (SendMessage conversationId) messages
+    chatId <- message ^. messageChat
+    pure . tell $ map (SendMessage chatId) messages

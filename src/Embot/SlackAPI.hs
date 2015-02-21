@@ -156,10 +156,10 @@ data Bot = Bot
     , _botIcons :: HM.HashMap Text Text
     }
 
-data Conversation
+data Chat
 
 data Message = Message
-    { _messageConversation :: Maybe (ID Conversation)
+    { _messageChat :: Maybe (ID Chat)
     , _messageUser         :: ID User
     , _messageSubtype      :: Maybe MessageSubtype
     , _messageText         :: Text
@@ -262,29 +262,29 @@ data RtmEvent
     | RtmReplyOk Word64 (Maybe TS) (Maybe Text)
     | RtmReplyNotOk Word64 Int32 Text
     | RtmMessage Message
-    | RtmChannelMarked (ConversationMarked Channel)
+    | RtmChannelMarked (ChatMarked Channel)
     | RtmChannelCreated Channel
     | RtmChannelJoined Channel
     | RtmChannelLeft Channel
     | RtmChannelDeleted (ID Channel)
     | RtmChannelRenamed Channel
-    | RtmChannelArchive (ConversationUser Channel)
-    | RtmChannelUnarchive (ConversationUser Channel)
-    | RtmChannelHistoryChanged (ConversationHistoryChanged Channel)
+    | RtmChannelArchive (ChatUser Channel)
+    | RtmChannelUnarchive (ChatUser Channel)
+    | RtmChannelHistoryChanged (ChatHistoryChanged Channel)
     | RtmImCreated ImCreated
-    | RtmImOpen (ConversationUser IM)
-    | RtmImClose (ConversationUser IM)
-    | RtmImMarked (ConversationMarked IM)
-    | RtmImHistoryChanged (ConversationHistoryChanged IM)
+    | RtmImOpen (ChatUser IM)
+    | RtmImClose (ChatUser IM)
+    | RtmImMarked (ChatMarked IM)
+    | RtmImHistoryChanged (ChatHistoryChanged IM)
     | RtmGroupJoined Group
     | RtmGroupLeft Group
-    | RtmGroupOpen (ConversationUser Group)
-    | RtmGroupClose (ConversationUser Group)
+    | RtmGroupOpen (ChatUser Group)
+    | RtmGroupClose (ChatUser Group)
     | RtmGroupArchive (ID Group)
     | RtmGroupUnarchive (ID Group)
     | RtmGroupRename Group
-    | RtmGroupMarked (ConversationMarked Group)
-    | RtmGroupHistoryChanged (ConversationHistoryChanged Group)
+    | RtmGroupMarked (ChatMarked Group)
+    | RtmGroupHistoryChanged (ChatHistoryChanged Group)
     | RtmFileCreated File
     | RtmFileShared File
     | RtmFileUnshared File
@@ -313,20 +313,20 @@ data RtmEvent
     | RtmBotChanged Bot
     | RtmAccountsChanged
 
-data ConversationMarked a = ConversationMarked
-    { _conversationMarkedChannel :: ID a
-    , _conversationMarkedTS      :: TS
+data ChatMarked a = ChatMarked
+    { _chatMarkedChannel :: ID a
+    , _chatMarkedTS      :: TS
     }
 
-data ConversationUser a = ConversationUser
-    { _conversationUserUser    :: ID User
-    , _conversationUserChannel :: ID a
+data ChatUser a = ChatUser
+    { _chatUserUser    :: ID User
+    , _chatUserChannel :: ID a
     }
 
-data ConversationHistoryChanged a = ConversationHistoryChanged
-    { _conversationHistoryChangedLatest  :: Text
-    , _conversationHistoryChangedTS      :: TS
-    , _conversationHistoryChangedEventTS :: TS
+data ChatHistoryChanged a = ChatHistoryChanged
+    { _chatHistoryChangedLatest  :: Text
+    , _chatHistoryChangedTS      :: TS
+    , _chatHistoryChangedEventTS :: TS
     }
 
 data ImCreated = ImCreated
@@ -361,7 +361,7 @@ data PrefChange = PrefChange
 
 data UserTyping = UserTyping
     { _userTypingUser :: ID User
-    , _userTypingChannel :: ID Conversation
+    , _userTypingChannel :: ID Chat
     }
 
 data Star = Star
@@ -390,7 +390,7 @@ data EmailDomainChanged = EmailDomainChanged
 
 data RtmSendMessage = RtmSendMessage
     { _sendMessageSeqnum       :: Word64
-    , _sendMessageConversation :: ID Conversation
+    , _sendMessageChat :: ID Chat
     , _sendMessageText         :: Text
     }
 
@@ -404,7 +404,7 @@ instance SlackTyped FileComment where
     isTypedID _ t = "Fc" `isPrefixOf` t
 instance SlackTyped Group where
     isTypedID _ = isPrefixOf "G"
-instance SlackTyped Conversation where
+instance SlackTyped Chat where
      isTypedID _ t
         =  isTypedID (Proxy :: Proxy Channel) t
         || isTypedID (Proxy :: Proxy IM) t
@@ -420,11 +420,11 @@ asTypedID (ID t) =
         then Just (ID t)
         else Nothing
 
-asChannelID :: ID Conversation -> Maybe (ID Channel)
+asChannelID :: ID Chat -> Maybe (ID Channel)
 asChannelID = asTypedID
-asGroupID :: ID Conversation -> Maybe (ID Group)
+asGroupID :: ID Chat -> Maybe (ID Group)
 asGroupID = asTypedID
-asIMID :: ID Conversation -> Maybe (ID IM)
+asIMID :: ID Chat -> Maybe (ID IM)
 asIMID = asTypedID
 
 makeLenses ''RtmStartRequest
@@ -445,9 +445,9 @@ makeLenses ''SlackTracked
 makeLenses ''File
 makeLenses ''FileComment
 makePrisms ''RtmEvent
-makeLenses ''ConversationMarked
-makeLenses ''ConversationUser
-makeLenses ''ConversationHistoryChanged
+makeLenses ''ChatMarked
+makeLenses ''ChatUser
+makeLenses ''ChatHistoryChanged
 makeLenses ''ImCreated
 makeLenses ''FileDeleted
 makeLenses ''FileCommentUpdated
@@ -482,9 +482,9 @@ deriveShow ''File
 deriveShow ''FileMode
 deriveShow ''FileComment
 deriveShow ''RtmEvent
-deriveShow ''ConversationMarked
-deriveShow ''ConversationUser
-deriveShow ''ConversationHistoryChanged
+deriveShow ''ChatMarked
+deriveShow ''ChatUser
+deriveShow ''ChatHistoryChanged
 deriveShow ''ImCreated
 deriveShow ''FileDeleted
 deriveShow ''FileCommentUpdated
@@ -808,18 +808,18 @@ instance FromJSON RtmEvent where
                         other                     -> fail . unpack $ "unknown RTM event type " <> other
 
 
-instance FromJSON (ConversationMarked a) where
-    parseJSON = withObject "channel / im / group marked event" $ \ o -> ConversationMarked
+instance FromJSON (ChatMarked a) where
+    parseJSON = withObject "channel / im / group marked event" $ \ o -> ChatMarked
         <$> o .: "channel"
         <*> o .: "ts"
 
-instance FromJSON (ConversationUser a) where
-    parseJSON = withObject "channel and user from event" $ \ o -> ConversationUser
+instance FromJSON (ChatUser a) where
+    parseJSON = withObject "channel and user from event" $ \ o -> ChatUser
         <$> o .: "channel"
         <*> o .: "user"
 
-instance FromJSON (ConversationHistoryChanged a) where
-    parseJSON = withObject "channel history changed event" $ \ o -> ConversationHistoryChanged
+instance FromJSON (ChatHistoryChanged a) where
+    parseJSON = withObject "channel history changed event" $ \ o -> ChatHistoryChanged
         <$> o .: "latest"
         <*> o .: "ts"
         <*> o .: "event_ts"
@@ -886,9 +886,9 @@ instance FromJSON EmailDomainChanged where
         <*> o .: "event_ts"
 
 instance ToJSON RtmSendMessage where
-    toJSON (RtmSendMessage seqnum conversation message) = object
+    toJSON (RtmSendMessage seqnum chat message) = object
         [ "type"    .= ("message" :: Text)
         , "id"      .= seqnum
-        , "channel" .= conversation
+        , "channel" .= chat
         , "text"    .= message
         ]

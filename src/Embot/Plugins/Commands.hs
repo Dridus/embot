@@ -25,7 +25,7 @@ import Embot.Core (EmbotIO, Env, EnvElem(envElem), EnvInitializer, Interceptor, 
 import Embot.Event (eventConsumed, eventDetail, _ReceivedMessage)
 import Embot.Helpers (replyTo)
 import Embot.Plugins.SlackInfo (SlackInfo, infoSelf)
-import Embot.SlackAPI (ID(unID), asIMID, User, selfId, messageConversation, messageText)
+import Embot.SlackAPI (ID(unID), asIMID, User, selfId, messageChat, messageText)
 
 data Command = Command
     { _commandSyntax      :: Text
@@ -104,9 +104,9 @@ onCommand command =
                 fromMaybe (orElse event) $ do
                     guard . not $ event ^. eventConsumed
                     text            <- event ^? eventDetail . _ReceivedMessage . messageText
-                    conversationMay <- event ^? eventDetail . _ReceivedMessage . messageConversation
-                    conversation    <- conversationMay
-                    case asIMID conversation of
+                    chatMay <- event ^? eventDetail . _ReceivedMessage . messageChat
+                    chat    <- chatMay
+                    case asIMID chat of
                         Just _ -> void $ ICU.find dmPattern text
                         Nothing -> do
                             match <- ICU.find mentionPattern text

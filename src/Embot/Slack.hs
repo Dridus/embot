@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-module Embot.SlackAPI where
+module Embot.Slack where
 
 import           ClassyPrelude (Bool(True, False), Int, (&&), (||), concatMap, map, not)
 import           Control.Applicative ((<$>), (<*>), pure)

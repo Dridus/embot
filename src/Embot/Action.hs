@@ -6,7 +6,7 @@ import Embot.Slack (ID, Chat)
 import Text.Show.Text.TH (deriveShow)
 
 data Action
-    = SendMessage (ID Chat) Text
+  = SendMessage (ID Chat) Text
 
 deriveShow ''Action
 makePrisms ''Action

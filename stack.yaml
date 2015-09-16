@@ -1,0 +1,12 @@
+flags: {}
+packages:
+- '.'
+extra-deps:
+- dyre-0.8.12
+- io-storage-0.3
+- xdg-basedir-0.2.2
+extra-include-dirs:
+- "/usr/local/opt/icu4c/include"
+extra-lib-dirs:
+- "/usr/local/opt/icu4c/lib"
+resolver: lts-3.0

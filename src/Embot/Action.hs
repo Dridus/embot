@@ -1,12 +1,12 @@
 module Embot.Action where
 
+import ClassyPrelude
 import Control.Lens.TH (makePrisms)
-import Data.Text (Text)
 import Embot.Slack (ID, Chat)
-import Text.Show.Text.TH (deriveShow)
+import TextShow.TH (deriveTextShow)
 
 data Action
   = SendMessage (ID Chat) Text
 
-deriveShow ''Action
+deriveTextShow ''Action
 makePrisms ''Action

@@ -1,49 +1,40 @@
 module Embot.Slack where
 
-import ClassyPrelude (Bool(True, False), Int, (&&), (||), concatMap, map, not)
-import Control.Applicative ((<$>), (<*>), pure)
-import Control.Lens.TH (makeLenses, makePrisms)
-import Control.Monad ((>>=), fail)
-import Data.Aeson ((.:), (.:?), (.=), (.!=), Value(Object, String), Object, FromJSON(parseJSON), ToJSON(toJSON), object, withText, withObject, withScientific, withText)
-import Data.Aeson.Types (Parser)
-import Data.Eq (Eq)
-import Data.Function (($), (.), flip)
+import           ClassyPrelude
+import           Control.Lens (Lens', view, to)
+import           Control.Lens.TH (makeLenses, makePrisms)
+import           Data.Aeson ((.:), (.:?), (.=), (.!=), Value(Object, String), Object, FromJSON(parseJSON), ToJSON(toJSON), object, withText, withObject, withScientific, withText)
+import           Data.Aeson.Types (Parser)
 import qualified Data.HashMap.Strict as HM
-import Data.Int (Int32)
-import Data.Maybe (Maybe(Just, Nothing), maybeToList)
-import Data.Monoid ((<>))
-import Data.Ord (Ord)
-import Data.Proxy (Proxy(Proxy))
-import Data.Scientific (toBoundedInteger)
-import Data.Text (Text, unpack, isPrefixOf, stripPrefix)
-import Data.Word (Word32, Word64)
-import Text.Show.Text (FromStringShow(FromStringShow), Show(showbPrec), show)
-import Text.Show.Text.TH (deriveShow)
+import           Data.Proxy (Proxy(Proxy))
+import           Data.Scientific (toBoundedInteger)
+import           TextShow (FromStringShow(FromStringShow), TextShow(showb), showt)
+import           TextShow.TH (deriveTextShow)
 
-import Embot.TextShowOrphans ()
-
-asText :: Text -> Parser Text
-asText = pure
+import           Embot.TextShowOrphans ()
 
 newtype TS = TS { unTS :: Text } deriving (Eq, Ord)
 instance FromJSON TS where
   parseJSON = withText "timestamp" $ pure . TS
-deriveShow ''TS
+deriveTextShow ''TS
 
 newtype Time = Time { unTime :: Word32 } deriving (Eq, Ord)
 instance FromJSON Time where
   parseJSON = withScientific "time" $ \ s ->
     case toBoundedInteger s of
       Just w32 -> pure (Time w32)
-      Nothing  -> fail . unpack $ "out of bound unix time " <> show (FromStringShow s)
-deriveShow ''Time
+      Nothing  -> fail . unpack $ "out of bound unix time " <> showt (FromStringShow s)
+deriveTextShow ''Time
 
 newtype ID a = ID { unID :: Text } deriving (Eq, Ord)
 instance FromJSON (ID a) where
   parseJSON = withText "id" $ pure . ID
 instance ToJSON (ID a) where
   toJSON = String . unID
-deriveShow ''ID
+deriveTextShow ''ID
+
+idedName :: Lens' s Text -> Lens' s (ID k) -> (s -> Text)
+idedName name ident s = view name s ++ " <" ++ view (ident . to unID) s ++ ">"
 
 data Response a = ResponseNotOk !Text | ResponseOk a
 
@@ -245,9 +236,9 @@ data RtmEvent
   | RtmChannelMarked (ChatMarked Channel)
   | RtmChannelCreated Channel
   | RtmChannelJoined Channel
-  | RtmChannelLeft Channel
+  | RtmChannelLeft (ID Channel)
   | RtmChannelDeleted (ID Channel)
-  | RtmChannelRenamed Channel
+  | RtmChannelRenamed (ChatRenamed Channel)
   | RtmChannelArchive (ChatUser Channel)
   | RtmChannelUnarchive (ChatUser Channel)
   | RtmChannelHistoryChanged (ChatHistoryChanged Channel)
@@ -257,12 +248,12 @@ data RtmEvent
   | RtmImMarked (ChatMarked IM)
   | RtmImHistoryChanged (ChatHistoryChanged IM)
   | RtmGroupJoined Group
-  | RtmGroupLeft Group
+  | RtmGroupLeft (ID Group)
   | RtmGroupOpen (ChatUser Group)
   | RtmGroupClose (ChatUser Group)
   | RtmGroupArchive (ID Group)
   | RtmGroupUnarchive (ID Group)
-  | RtmGroupRename Group
+  | RtmGroupRename (ChatRenamed Group)
   | RtmGroupMarked (ChatMarked Group)
   | RtmGroupHistoryChanged (ChatHistoryChanged Group)
   | RtmFileCreated File
@@ -300,6 +291,10 @@ data ChatMarked a = ChatMarked
 data ChatUser a = ChatUser
   { _chatUserUser      :: ID User
   , _chatUserChannelID :: ID a }
+
+data ChatRenamed a = ChatRenamed
+  { _chatRenamedChannelID :: ID a
+  , _chatRenamedName      :: Text }
 
 data ChatHistoryChanged a = ChatHistoryChanged
   { _chatHistoryChangedLatest  :: Text
@@ -393,6 +388,44 @@ asGroupID = asTypedID
 asIMID :: ID Chat -> Maybe (ID IM)
 asIMID = asTypedID
 
+deriving instance Eq RtmStartRequest
+deriving instance Eq RtmStartRp
+deriving instance Eq Self
+deriving instance Eq Team
+deriving instance Eq User
+deriving instance Eq Profile
+deriving instance Eq Channel
+deriving instance Eq Group
+deriving instance Eq IM
+deriving instance Eq Bot
+deriving instance Eq MessageSubtype
+deriving instance Eq Message
+deriving instance Eq MessageEdited
+deriving instance Eq Attachment
+deriving instance Eq AttachmentField
+deriving instance Eq a => Eq (SlackTracked a)
+deriving instance Eq FileMode
+deriving instance Eq File
+deriving instance Eq FileComment
+deriving instance Eq RtmEvent
+deriving instance Eq a => Eq (ChatMarked a)
+deriving instance Eq a => Eq (ChatUser a)
+deriving instance Eq a => Eq (ChatRenamed a)
+deriving instance Eq a => Eq (ChatHistoryChanged a)
+deriving instance Eq ImCreated
+deriving instance Eq FileDeleted
+deriving instance Eq FileCommentUpdated
+deriving instance Eq FileCommentDeleted
+deriving instance Eq Presence
+deriving instance Eq PresenceChange
+deriving instance Eq UserTyping
+deriving instance Eq PrefChange
+deriving instance Eq Star
+deriving instance Eq StarItem
+deriving instance Eq TeamDomainChange
+deriving instance Eq EmailDomainChanged
+deriving instance Eq RtmSendMessage
+
 makeLenses ''RtmStartRequest
 makeLenses ''RtmStartRp
 makeLenses ''Self
@@ -413,6 +446,7 @@ makeLenses ''FileComment
 makePrisms ''RtmEvent
 makeLenses ''ChatMarked
 makeLenses ''ChatUser
+makeLenses ''ChatRenamed
 makeLenses ''ChatHistoryChanged
 makeLenses ''ImCreated
 makeLenses ''FileDeleted
@@ -427,42 +461,47 @@ makeLenses ''TeamDomainChange
 makeLenses ''EmailDomainChanged
 makeLenses ''RtmSendMessage
 
-deriveShow ''RtmStartRequest
-deriveShow ''RtmStartRp
-deriveShow ''Self
-deriveShow ''Presence
-deriveShow ''Team
-deriveShow ''User
-deriveShow ''Profile
-deriveShow ''Channel
-deriveShow ''Group
-deriveShow ''IM
-deriveShow ''Bot
-deriveShow ''Message
-deriveShow ''MessageSubtype
-deriveShow ''MessageEdited
-deriveShow ''Attachment
-deriveShow ''AttachmentField
-deriveShow ''SlackTracked
-deriveShow ''File
-deriveShow ''FileMode
-deriveShow ''FileComment
-deriveShow ''RtmEvent
-deriveShow ''ChatMarked
-deriveShow ''ChatUser
-deriveShow ''ChatHistoryChanged
-deriveShow ''ImCreated
-deriveShow ''FileDeleted
-deriveShow ''FileCommentUpdated
-deriveShow ''FileCommentDeleted
-deriveShow ''PresenceChange
-deriveShow ''UserTyping
-deriveShow ''PrefChange
-deriveShow ''Star
-deriveShow ''StarItem
-deriveShow ''TeamDomainChange
-deriveShow ''EmailDomainChanged
-deriveShow ''RtmSendMessage
+
+instance TextShow Chat where
+  showb _ = "Chat"
+
+deriveTextShow ''RtmStartRequest
+deriveTextShow ''RtmStartRp
+deriveTextShow ''Self
+deriveTextShow ''Presence
+deriveTextShow ''Team
+deriveTextShow ''User
+deriveTextShow ''Profile
+deriveTextShow ''Channel
+deriveTextShow ''Group
+deriveTextShow ''IM
+deriveTextShow ''Bot
+deriveTextShow ''Message
+deriveTextShow ''MessageSubtype
+deriveTextShow ''MessageEdited
+deriveTextShow ''Attachment
+deriveTextShow ''AttachmentField
+deriveTextShow ''SlackTracked
+deriveTextShow ''File
+deriveTextShow ''FileMode
+deriveTextShow ''FileComment
+deriveTextShow ''RtmEvent
+deriveTextShow ''ChatMarked
+deriveTextShow ''ChatUser
+deriveTextShow ''ChatRenamed
+deriveTextShow ''ChatHistoryChanged
+deriveTextShow ''ImCreated
+deriveTextShow ''FileDeleted
+deriveTextShow ''FileCommentUpdated
+deriveTextShow ''FileCommentDeleted
+deriveTextShow ''PresenceChange
+deriveTextShow ''UserTyping
+deriveTextShow ''PrefChange
+deriveTextShow ''Star
+deriveTextShow ''StarItem
+deriveTextShow ''TeamDomainChange
+deriveTextShow ''EmailDomainChanged
+deriveTextShow ''RtmSendMessage
 
 instance ToJSON RtmStartRequest where
   toJSON (RtmStartRequest { .. }) = object
@@ -713,11 +752,11 @@ instance FromJSON RtmEvent where
     in flip (withObject "event object") v $ \ o ->
         o .:? "reply_to" >>= \ case
           Just seqnum ->
-              o .: "ok" >>= \ case
-                True  -> RtmReplyOk seqnum <$> o .:? "ts" <*> o .:? "text"
-                False -> o .: "error" >>= (withObject "RTM error" $ \ o2 -> RtmReplyNotOk seqnum <$> o2 .: "code" <*> o2 .: "msg")
+            o .: "ok" >>= \ case
+              True  -> RtmReplyOk seqnum <$> o .:? "ts" <*> o .:? "text"
+              False -> o .: "error" >>= (withObject "RTM error" $ \ o2 -> RtmReplyNotOk seqnum <$> o2 .: "code" <*> o2 .: "msg")
           Nothing ->
-            o .: "type" >>= asText >>= \ case
+            o .: "type" >>= pure . asText >>= \ case
               "hello"                   -> pure RtmHello
               "message"                 -> RtmMessage <$> recur
               "channel_marked"          -> RtmChannelMarked <$> recur
@@ -783,6 +822,11 @@ instance FromJSON (ChatUser a) where
     <$> o .: "channel"
     <*> o .: "user"
 
+instance FromJSON (ChatRenamed a) where
+  parseJSON = withObject "channel and new name from event" $ \ o -> ChatRenamed
+    <$> o .: "id"
+    <*> o .: "name"
+
 instance FromJSON (ChatHistoryChanged a) where
   parseJSON = withObject "channel history changed event" $ \ o -> ChatHistoryChanged
     <$> o .: "latest"
@@ -831,7 +875,7 @@ instance FromJSON Star where
     <*> o .: "event_ts"
 
 instance FromJSON StarItem where
-  parseJSON = withObject "starred item reference" $ \ o -> o .: "type" >>= \ case
+  parseJSON = withObject "starred item reference" $ \ o -> o .: "type" >>= pure . asText >>= \ case
     "message"      -> StarItemMessage     <$> o .: "message"
     "file"         -> StarItemFile        <$> o .: "file"
     "file_comment" -> StarItemFileComment <$> o .: "file" <*> o .: "comment"

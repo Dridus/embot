@@ -18,22 +18,48 @@ executable embot
   main-is:             main.hs
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
 
+  other-modules:       Embot
+                     , Embot.Action
+                     , Embot.Config
+                     , Embot.Driver
+                     , Embot.Examples.Echo
+                     , Embot.Slack
+                     , Embot.SlackState
+                     , Embot.TextShowOrphans
+                     , Embot.Types
+                     , Embot.Wire
+                     , Paths_embot
+                                                    
   build-depends:       base
+                     , HsOpenSSL
+                     , aeson
+                     , bytestring
                      , classy-prelude
                      , classy-prelude-conduit
+                     , containers
+                     , directory
+                     , dyre
+                     , fast-logger
+                     , io-streams
+                     , lens
+                     , lifted-base
+                     , monad-logger
+                     , mtl
+                     , netwire
+                     , network
+                     , network-uri
+                     , old-locale
+                     , openssl-streams
+                     , scientific
+                     , template-haskell
                      , text
+                     , text-icu
+                     , text-show
+                     , time
+                     , transformers
+                     , unordered-containers
                      , websockets
                      , wreq
-                     , lens
-                     , HsOpenSSL
-                     , openssl-streams
-                     , network
-                     , io-streams
-                     , text-show
-                     , mtl
-                     , transformers
-                     , text-icu
-                     , dyre
                      
   default-language:    Haskell2010
 

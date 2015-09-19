@@ -1,4 +1,4 @@
 #! /usr/bin/env zsh
 
-dist/build/embot/embot $@
+.stack-work/install/x86_64-osx/lts-3.0/7.10.2/bin/embot $@
 

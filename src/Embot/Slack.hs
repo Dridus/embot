@@ -1,7 +1,7 @@
 module Embot.Slack where
 
 import           ClassyPrelude
-import           Control.Lens (Lens', view, to)
+import           Control.Lens (Getter, view, to)
 import           Control.Lens.TH (makeLenses, makePrisms)
 import           Data.Aeson ((.:), (.:?), (.=), (.!=), Value(Object, String), Object, FromJSON(parseJSON), ToJSON(toJSON), object, withText, withObject, withScientific, withText)
 import           Data.Aeson.Types (Parser)
@@ -33,7 +33,7 @@ instance ToJSON (ID a) where
   toJSON = String . unID
 deriveTextShow ''ID
 
-idedName :: Lens' s Text -> Lens' s (ID k) -> (s -> Text)
+idedName :: Getter s Text -> Getter s (ID k) -> (s -> Text)
 idedName name ident s = view name s ++ " <" ++ view (ident . to unID) s ++ ">"
 
 data Response a = ResponseNotOk !Text | ResponseOk a

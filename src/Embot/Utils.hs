@@ -1,7 +1,7 @@
-module Embot.Utils (when) where
+module Embot.Utils (applyWhen) where
 
 import ClassyPrelude
 
-when :: (a -> Bool) -> (a -> a) -> (a -> a)
-when p f a | p a       = f a
-           | otherwise =   a
+applyWhen :: (a -> Bool) -> (a -> a) -> (a -> a)
+applyWhen p f a | p a       = f a
+                | otherwise =   a

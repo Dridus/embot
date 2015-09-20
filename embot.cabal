@@ -38,6 +38,7 @@ executable embot
                      , classy-prelude-conduit
                      , containers
                      , directory
+                     , Diff
                      , dyre
                      , fast-logger
                      , io-streams

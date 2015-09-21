@@ -79,8 +79,10 @@ data User = User
   , _userIsPrimaryOwner    :: Bool
   , _userIsRestricted      :: Bool
   , _userIsUltraRestricted :: Bool
+  , _userHas2fa            :: Bool
+  , _userTwoFactorType     :: Maybe Text
   , _userHasFiles          :: Bool
-  }
+  , _userPresence          :: Maybe Presence }
 
 data Profile = Profile
   { _profileFirstName :: Maybe Text
@@ -242,11 +244,11 @@ data RtmEvent
   | RtmChannelArchive (ChatUser Channel)
   | RtmChannelUnarchive (ChatUser Channel)
   | RtmChannelHistoryChanged (ChatHistoryChanged Channel)
-  | RtmImCreated ImCreated
-  | RtmImOpen (ChatUser IM)
-  | RtmImClose (ChatUser IM)
-  | RtmImMarked (ChatMarked IM)
-  | RtmImHistoryChanged (ChatHistoryChanged IM)
+  | RtmIMCreated IMCreated
+  | RtmIMOpen (ChatUser IM)
+  | RtmIMClose (ChatUser IM)
+  | RtmIMMarked (ChatMarked IM)
+  | RtmIMHistoryChanged (ChatHistoryChanged IM)
   | RtmGroupJoined Group
   | RtmGroupLeft (ID Group)
   | RtmGroupOpen (ChatUser Group)
@@ -301,9 +303,9 @@ data ChatHistoryChanged a = ChatHistoryChanged
   , _chatHistoryChangedTS      :: TS
   , _chatHistoryChangedEventTS :: TS }
 
-data ImCreated = ImCreated
+data IMCreated = IMCreated
   { _imCreatedUser    :: Text
-  , _imCreatedChannel :: Channel }
+  , _imCreatedChannel :: IM }
 
 data FileDeleted = FileDeleted
   { _fileDeletedFileID  :: Text
@@ -412,7 +414,7 @@ deriving instance Eq a => Eq (ChatMarked a)
 deriving instance Eq a => Eq (ChatUser a)
 deriving instance Eq a => Eq (ChatRenamed a)
 deriving instance Eq a => Eq (ChatHistoryChanged a)
-deriving instance Eq ImCreated
+deriving instance Eq IMCreated
 deriving instance Eq FileDeleted
 deriving instance Eq FileCommentUpdated
 deriving instance Eq FileCommentDeleted
@@ -448,7 +450,7 @@ makeLenses ''ChatMarked
 makeLenses ''ChatUser
 makeLenses ''ChatRenamed
 makeLenses ''ChatHistoryChanged
-makeLenses ''ImCreated
+makeLenses ''IMCreated
 makeLenses ''FileDeleted
 makeLenses ''FileCommentUpdated
 makeLenses ''FileCommentDeleted
@@ -490,7 +492,7 @@ deriveTextShow ''ChatMarked
 deriveTextShow ''ChatUser
 deriveTextShow ''ChatRenamed
 deriveTextShow ''ChatHistoryChanged
-deriveTextShow ''ImCreated
+deriveTextShow ''IMCreated
 deriveTextShow ''FileDeleted
 deriveTextShow ''FileCommentUpdated
 deriveTextShow ''FileCommentDeleted
@@ -566,7 +568,10 @@ instance FromJSON User where
     <*> o .: "is_primary_owner"
     <*> o .: "is_restricted"
     <*> o .: "is_ultra_restricted"
+    <*> o .:? "has_2fa" .!= False
+    <*> o .:? "two_factor_type"
     <*> o .:? "has_files" .!= False
+    <*> o .:? "presence"
 
 instance FromJSON Profile where
   parseJSON = withObject "user profile object" $ \ o -> Profile
@@ -768,11 +773,11 @@ instance FromJSON RtmEvent where
               "channel_archive"         -> RtmChannelArchive <$> recur
               "channel_unarchive"       -> RtmChannelUnarchive <$> recur
               "channel_history_changed" -> RtmChannelHistoryChanged <$> recur
-              "im_created"              -> RtmImCreated <$> recur
-              "im_open"                 -> RtmImOpen <$> recur
-              "im_close"                -> RtmImClose <$> recur
-              "im_marked"               -> RtmImMarked <$> recur
-              "im_history_changed"      -> RtmImHistoryChanged <$> recur
+              "im_created"              -> RtmIMCreated <$> recur
+              "im_open"                 -> RtmIMOpen <$> recur
+              "im_close"                -> RtmIMClose <$> recur
+              "im_marked"               -> RtmIMMarked <$> recur
+              "im_history_changed"      -> RtmIMHistoryChanged <$> recur
               "group_joined"            -> RtmGroupJoined <$> o .: "channel"
               "group_left"              -> RtmGroupLeft <$> o .: "channel"
               "group_open"              -> RtmGroupOpen <$> recur
@@ -833,8 +838,8 @@ instance FromJSON (ChatHistoryChanged a) where
     <*> o .: "ts"
     <*> o .: "event_ts"
 
-instance FromJSON ImCreated where
-  parseJSON = withObject "im created event" $ \ o -> ImCreated
+instance FromJSON IMCreated where
+  parseJSON = withObject "im created event" $ \ o -> IMCreated
     <$> o .: "user"
     <*> o .: "channel"
 

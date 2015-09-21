@@ -25,6 +25,7 @@ executable embot
                      , Embot.Examples.Echo
                      , Embot.Slack
                      , Embot.SlackState
+                     , Embot.SlackStateChangelog
                      , Embot.TextShowOrphans
                      , Embot.Types
                      , Embot.Wire

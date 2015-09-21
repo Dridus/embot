@@ -12,8 +12,8 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Sequence as Seq
 import           TextShow (TextShow, showt)
 
-import Embot.Slack (ID, RtmEvent, unID, channelName, groupName, imUser, idedName)
-import Embot.SlackState (SlackState, channels, groups, ims)
+import Embot.Slack (ID, RtmEvent, unID, channelName, groupName, imUser, idedName, userName)
+import Embot.SlackState (SlackState, channels, groups, ims, users)
 import Embot.Types (EmbotWire, MinimalEmbotMonad)
 import Embot.Wire (diffByE)
 
@@ -23,6 +23,7 @@ slackStateLogger slackState =
     onEventM (logDiff channelName "Channels changed") <<< diffByE ((==) `on` fst) <<< arr (map Map.toAscList) <<< view channels slackState -< event
     onEventM (logDiff groupName   "Groups changed")   <<< diffByE ((==) `on` fst) <<< arr (map Map.toAscList) <<< view groups   slackState -< event
     onEventM (logDiff imLabel     "IMs changed")      <<< diffByE ((==) `on` fst) <<< arr (map Map.toAscList) <<< view ims      slackState -< event
+    onEventM (logDiff userName    "Users changed")    <<< diffByE ((==) `on` fst) <<< arr (map Map.toAscList) <<< view users    slackState -< event
     arr . map . const $ () -< event
   where
     imLabel = imUser . to unID

@@ -1,43 +1,47 @@
 module Embot.SlackState
-  ( SlackState(..), slackState, channels, ims, groups
+  ( SlackState(..), slackState, channels, ims, groups, users
   ) where
 
 import           ClassyPrelude
 import           Control.Arrow ((>>>))
-import           Control.Lens ((.~), view)
+import           Control.Lens ((.~), to, view)
 import           Control.Lens.TH (makeLenses)
 import           Control.Monad.Logger (logInfo)
 import           Control.Wire (Event)
-import           Data.Foldable (traverse_)
+import           Data.Foldable (for_, traverse_)
 import qualified Data.Map.Strict as Map
 import           TextShow (showt)
 
 import Embot.Slack ( chatRenamedChannelID, chatRenamedName
                    , Channel, channelID, channelIsArchived, channelIsMember, channelName
-                   , chatUserChannelID
+                   , chatUserChannelID, imCreatedChannel, presenceChangePresence, presenceChangeUser
                    , Group, groupID, groupIsArchived, groupName
-                   , IM, imID
+                   , IM, imID, imUser, imIsOpen
                    , ID, idedName
+                   , User, userID, userName, userPresence
                    , RtmEvent( RtmChannelCreated, RtmChannelJoined, RtmChannelLeft, RtmChannelDeleted
                              , RtmChannelRenamed, RtmChannelArchive, RtmChannelUnarchive
-                             , RtmGroupJoined, RtmGroupLeft
-                             , RtmGroupRename, RtmGroupArchive, RtmGroupUnarchive )
-                   , RtmStartRp, rtmStartChannels, rtmStartGroups, rtmStartIMs )
+                             , RtmGroupJoined, RtmGroupLeft, RtmGroupRename, RtmGroupArchive, RtmGroupUnarchive
+                             , RtmIMCreated, RtmIMOpen, RtmIMClose
+                             , RtmUserChange, RtmTeamJoin, RtmPresenceChange )
+                   , RtmStartRp, rtmStartChannels, rtmStartGroups, rtmStartIMs, rtmStartUsers )
 import Embot.Types (EmbotWire, MinimalEmbotMonad)
 import Embot.Wire (accumEM, filterSameE)
 
 data SlackState m = SlackState
     { _channels :: EmbotWire m (Event RtmEvent) (Event (Map (ID Channel) Channel))
     , _groups   :: EmbotWire m (Event RtmEvent) (Event (Map (ID Group)   Group))
-    , _ims      :: EmbotWire m (Event RtmEvent) (Event (Map (ID IM)      IM)) }
+    , _ims      :: EmbotWire m (Event RtmEvent) (Event (Map (ID IM)      IM))
+    , _users    :: EmbotWire m (Event RtmEvent) (Event (Map (ID User)    User)) }
 
 makeLenses ''SlackState
 
 slackState :: MinimalEmbotMonad m => RtmStartRp -> SlackState m
-slackState = SlackState <$> channelsWire <*> groupsWire <*> imsWire
+slackState = SlackState <$> channelsWire <*> groupsWire <*> imsWire <*> usersWire
 
 channelsWire :: forall m. MinimalEmbotMonad m => RtmStartRp -> EmbotWire m (Event RtmEvent) (Event (Map (ID Channel) Channel))
-channelsWire rtmStartRp = accumEM k (Map.fromList . map (view channelID &&& id) $ view rtmStartChannels rtmStartRp) >>> filterSameE
+channelsWire rtmStartRp =
+  accumEM k (Map.fromList . map (view channelID &&& id) $ view rtmStartChannels rtmStartRp) >>> filterSameE
   where
     k chans = (($ chans) <$>) . \ case
       RtmChannelCreated chan -> do
@@ -76,7 +80,8 @@ channelsWire rtmStartRp = accumEM k (Map.fromList . map (view channelID &&& id) 
       traverse_ (logCh prefix) . headMay . Map.lookup chanID
 
 groupsWire :: forall m. MinimalEmbotMonad m => RtmStartRp -> EmbotWire m (Event RtmEvent) (Event (Map (ID Group) Group))
-groupsWire rtmStartRp = accumEM k (Map.fromList . map (view groupID &&& id) $ view rtmStartGroups rtmStartRp) >>> filterSameE
+groupsWire rtmStartRp =
+  accumEM k (Map.fromList . map (view groupID &&& id) $ view rtmStartGroups rtmStartRp) >>> filterSameE
   where
     k grps = (($ grps) <$>) . \ case
       RtmGroupJoined grp -> do
@@ -107,6 +112,47 @@ groupsWire rtmStartRp = accumEM k (Map.fromList . map (view groupID &&& id) $ vi
       traverse_ (logGr prefix) . headMay . Map.lookup grpID
 
 imsWire :: forall m. MinimalEmbotMonad m => RtmStartRp -> EmbotWire m (Event RtmEvent) (Event (Map (ID IM) IM))
-imsWire rtmStartRp = accumEM k (Map.fromList . map (view imID &&& id) $ view rtmStartIMs rtmStartRp) >>> filterSameE
+imsWire rtmStartRp =
+  accumEM k (Map.fromList . map (view imID &&& id) $ view rtmStartIMs rtmStartRp) >>> filterSameE
   where
-    k is _ = pure is
+    k is = (($ is) <$>) . \ case
+      RtmIMCreated (view imCreatedChannel -> i) -> do
+        logIm "IM created" i
+        pure $ Map.insert (view imID i) i
+      RtmIMOpen (view chatUserChannelID -> iID) -> do
+        logId "IM opened" iID is
+        pure $ Map.adjust (imIsOpen .~ True) iID
+      RtmIMClose (view chatUserChannelID -> iID) -> do
+        logId "IM closed" iID is
+        pure $ Map.adjust (imIsOpen .~ False) iID
+      _ ->
+        pure id
+
+    logIm :: Text -> IM -> m ()
+    logIm prefix i = $logInfo $ prefix ++ " " ++ idedName (to $ const "IM") imUser i
+
+    logId :: Text -> ID IM -> Map (ID IM) IM -> m ()
+    logId prefix iID =
+      traverse_ (logIm prefix) . headMay . Map.lookup iID
+
+usersWire :: MinimalEmbotMonad m => RtmStartRp -> EmbotWire m (Event RtmEvent) (Event (Map (ID User) User))
+usersWire rtmStartRp =
+  accumEM k (Map.fromList . map (view userID &&& id) $ view rtmStartUsers rtmStartRp) >>> filterSameE
+  where
+    k us = (($ us) <$>) . \ case
+      RtmUserChange user -> do
+        $logInfo $ "User changed " ++ idedName userName userID user
+        pure $ Map.insert (view userID user) user
+      RtmTeamJoin user -> do
+        $logInfo $ "User joined " ++ idedName userName userID user
+        pure $ Map.insert (view userID user) user
+      RtmPresenceChange change -> do
+        let uID = view presenceChangeUser change
+            presence = view presenceChangePresence change
+        for_ (Map.lookup uID us) $ \ user ->
+          $logInfo $ "User " ++ idedName userName userID user ++ " changed presence to " ++ showt presence
+        pure $ Map.adjust (userPresence .~ Just presence) uID
+      _ ->
+        pure id
+
+

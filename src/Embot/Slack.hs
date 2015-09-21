@@ -71,6 +71,7 @@ data Team = Team
 data User = User
   { _userID                :: ID User
   , _userName              :: Text
+  , _userRealName          :: Text
   , _userDeleted           :: Bool
   , _userColor             :: Text
   , _userProfile           :: Profile
@@ -560,6 +561,7 @@ instance FromJSON User where
   parseJSON = withObject "user object" $ \ o -> User
     <$> o .: "id"
     <*> o .: "name"
+    <*> o .: "real_name"
     <*> o .: "deleted"
     <*> o .: "color"
     <*> o .: "profile"

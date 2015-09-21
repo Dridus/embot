@@ -20,6 +20,8 @@ executable embot
 
   other-modules:       Embot
                      , Embot.Action
+                     , Embot.Command
+                     , Embot.Commands.SlackStateDump
                      , Embot.Config
                      , Embot.Driver
                      , Embot.Examples.Echo
@@ -34,6 +36,7 @@ executable embot
   build-depends:       base
                      , HsOpenSSL
                      , aeson
+                     , attoparsec
                      , bytestring
                      , classy-prelude
                      , classy-prelude-conduit

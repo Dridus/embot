@@ -15,5 +15,7 @@ instance (TextShow k, TextShow v) => TextShow (HM.HashMap k v) where
   showbPrec prec = ("HM.fromList " <>) . showbPrec prec . HM.toList
 instance (TextShow k, TextShow v) => TextShow (MS.Map k v) where
   showbPrec prec = ("MS.fromList " <>) . showbPrec prec . MS.toList
+instance TextShow a => TextShow (Seq a) where
+  showbPrec prec = ("Seq.fromList " <>) . showbPrec prec . toList
 instance TextShow a => TextShow (Event a) where
   showbPrec prec = event "NoEvent" (("Event " <>) . showbPrec prec)

@@ -5,15 +5,15 @@ module Embot.Command
     ) where
 
 import           ClassyPrelude
-import           Control.Arrow ((+++), (>>>), (|||), arr, right, returnA)
-import           Control.Lens (_Right, preview, to, view)
+import           Control.Arrow ((+++), (>>>), (|||), arr, returnA)
+import           Control.Lens ((%~), _Right, preview, to, view)
 import           Control.Lens.TH (makeLenses)
 import           Control.Wire.Unsafe.Event (Event(Event, NoEvent), onEventM)
 import           Data.Attoparsec.Text (Parser, parseOnly)
 import           Data.Monoid (First(First, getFirst))
 import           Data.Proxy (Proxy(Proxy))
 import qualified Data.Sequence as Seq
-import           Data.Text (strip)
+import           Data.Text (replace, strip)
 import           TextShow.TH (deriveTextShow)
 
 import           Embot.Action (Action(SendMessage))
@@ -37,8 +37,11 @@ deriveTextShow ''Command
 
 mentions :: Monad m => RtmStartRp -> EmbotWire m (Event RtmEvent) (Event Mention)
 mentions rtmStartRp =
-  filterMapE $ getFirst . foldMap (First <$>) [mentioned, imed]
+  filterMapE (getFirst . foldMap (First <$>) [mentioned, imed]) >>> (arr . map) (mentionText %~ unescape)
   where
+    unescape :: Text -> Text
+    unescape = replace "&lt;" "<" . replace "&gt;" ">" . replace "&amp;" "&" -- FIXME probably not great
+
     inIM :: Message -> Bool
     inIM = fromMaybe False . map (isTypedID (Proxy :: Proxy IM)) . view messageChat
 
@@ -67,12 +70,12 @@ mentions rtmStartRp =
 parseCommands
   :: Monad m
   => RtmStartRp  -- ^ The rtm.start reply
-  -> Parser ()   -- ^ The trigger parser - if it parses successfully only then apply the
+  -> Parser b    -- ^ The trigger parser - if it parses successfully only then apply the
                   --   main parser. If this parser fails, then @NoEvent@ will be produced
   -> Parser a    -- ^ The main command parser. If this parser fails then @Left (Event _)@ will be produced.
   -> EmbotWire m (Event RtmEvent) (Either (Event (Mention, Text)) (Event (Command a)))
 parseCommands rtmStartRp trigger parser =
-    mentions rtmStartRp >>> arr f
+  mentions rtmStartRp >>> arr f
   where
     f (Event mention) =
       let text = view mentionText mention in
@@ -87,7 +90,7 @@ parseCommands rtmStartRp trigger parser =
 commands
   :: (Applicative m, Monad m)
   => RtmStartRp  -- ^ The rtm.start reply
-  -> Parser ()   -- ^ The trigger parser - if it parses successfully only then apply the main parser. If this parser fails, then @NoEvent@ will be produced
+  -> Parser b    -- ^ The trigger parser - if it parses successfully only then apply the main parser. If this parser fails, then @NoEvent@ will be produced
   -> Parser a    -- ^ The main command parser. If this parser fails then @Event (Left _)@ will be produced.
   -> EmbotWire m (Event RtmEvent) (Either (Event (Seq Action)) (Event (Command a)))
 commands rtmStartRp trigger parser =
@@ -101,7 +104,7 @@ simpleCommands
   -> Parser a    -- ^ The command parser. If this parser fails then @NoEvent@ will be produced.
   -> EmbotWire m (Event RtmEvent) (Event (Command a))
 simpleCommands rtmStartRp parser =
-  commands rtmStartRp (parser *> pure ()) parser >>> arr (fromMaybe NoEvent . preview _Right)
+  commands rtmStartRp parser parser >>> arr (fromMaybe NoEvent . preview _Right)
 
 -- | Command wire which applies some effect function in the case where a command is successfully parsed,
 --   and reports the syntax error back to the sender in the case where the command is triggered
@@ -109,12 +112,12 @@ simpleCommands rtmStartRp parser =
 actionCommand
   :: (Applicative m, Monad m)
   => RtmStartRp  -- ^ The rtm.start reply
-  -> Parser ()   -- ^ The trigger parser - if it parses successfully only then apply the main parser. If this parser fails, then @NoEvent@ will be produced
+  -> Parser b    -- ^ The trigger parser - if it parses successfully only then apply the main parser. If this parser fails, then @NoEvent@ will be produced
   -> Parser a    -- ^ The main command parser. If this parser fails then @Event (Left _)@ will be produced.
   -> (Command a -> m (Seq Action)) -- ^ The action to react to the command with
   -> EmbotWire m (Event RtmEvent) (Event (Seq Action))
 actionCommand rtmStartRp trigger parser action =
-  commands rtmStartRp trigger parser >>> right (onEventM action) >>> id ||| id
+  commands rtmStartRp trigger parser >>> arr id +++ onEventM action >>> id ||| id -- arr id +++ because right doesn't work correctly
 
 simpleActionCommand
   :: (Applicative m, Monad m)
@@ -131,7 +134,7 @@ simpleActionCommand rtmStartRp parser action =
 pureCommand
   :: (Applicative m, Monad m)
   => RtmStartRp  -- ^ The rtm.start reply
-  -> Parser ()   -- ^ The trigger parser - if it parses successfully only then apply the main parser. If this parser fails, then @NoEvent@ will be produced
+  -> Parser b    -- ^ The trigger parser - if it parses successfully only then apply the main parser. If this parser fails, then @NoEvent@ will be produced
   -> Parser a    -- ^ The main command parser. If this parser fails then @Event (Left _)@ will be produced.
   -> (Command a -> Seq Action) -- ^ The function to react to the command with
   -> EmbotWire m (Event RtmEvent) (Event (Seq Action))

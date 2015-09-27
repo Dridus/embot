@@ -5,8 +5,6 @@ module Embot.Examples.Echo
 import           ClassyPrelude
 import           Control.Arrow (arr)
 import           Control.Lens (view)
-import           Data.Function (($))
-import           Data.Maybe (Maybe(Just))
 import qualified Data.Sequence as Seq
 import           Embot.Action (Action(SendMessage))
 import qualified Embot.Slack as Slack

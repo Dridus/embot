@@ -1,10 +1,10 @@
-module Embot.Commands.SlackStateDump (effects) where
+module Embot.Commands.SlackStateDump where
 
 import           ClassyPrelude
 import           Control.Arrow ((<<<), (>>>), returnA)
 import           Control.Lens (_1, _2, to, view)
 import           Control.Wire (hold)
-import           Data.Attoparsec.Text (skipSpace)
+import           Data.Attoparsec.Text (endOfInput, skipSpace)
 import qualified Data.Map.Strict as Map
 import qualified Data.Sequence as Seq
 import           TextShow (showt)
@@ -34,7 +34,7 @@ showChannels :: MinimalEmbotMonad m => RtmStartRp -> SlackState m -> EmbotLogic 
 showChannels rtmStartRp slackState =
   proc event -> do
     channels <- hold <<< view SlackState.channels slackState -< event
-    command <- simpleCommands rtmStartRp $ "show" *> skipSpace *> "channels" -< event
+    command <- simpleCommands rtmStartRp $ "show" *> skipSpace *> "channels" *> endOfInput -< event
     returnA -< map (respond channels) command
   where
     respond :: Map (ID Channel) Channel -> Command a -> Seq Action
@@ -56,7 +56,7 @@ showGroups :: MinimalEmbotMonad m => RtmStartRp -> SlackState m -> EmbotLogic m
 showGroups rtmStartRp slackState =
   proc event -> do
     groups <- hold <<< view SlackState.groups slackState -< event
-    command <- simpleCommands rtmStartRp $ "show" *> skipSpace *> "groups" -< event
+    command <- simpleCommands rtmStartRp $ "show" *> skipSpace *> "groups" *> endOfInput -< event
     returnA -< map (respond groups) command
   where
     respond :: Map (ID Group) Group -> Command a -> Seq Action
@@ -77,7 +77,7 @@ showIMs rtmStartRp slackState =
   proc event -> do
     ims <- hold <<< view SlackState.ims slackState -< event
     users <- hold <<< view SlackState.users slackState -< event
-    command <- simpleCommands rtmStartRp $ "show" *> skipSpace *> "ims" -< event
+    command <- simpleCommands rtmStartRp $ "show" *> skipSpace *> "ims" *> endOfInput -< event
     returnA -< map (respond users ims) command
   where
     respond :: Map (ID User) User -> Map (ID IM) IM -> Command a -> Seq Action
@@ -103,7 +103,7 @@ showUsers :: MinimalEmbotMonad m => RtmStartRp -> SlackState m -> EmbotLogic m
 showUsers rtmStartRp slackState =
   proc event -> do
     users <- hold <<< view SlackState.users slackState -< event
-    command <- simpleCommands rtmStartRp $ "show" *> skipSpace *> "users" -< event
+    command <- simpleCommands rtmStartRp $ "show" *> skipSpace *> "users" *> endOfInput -< event
     returnA -< map (respond users) command
   where
     respond :: Map (ID User) User -> Command a -> Seq Action

@@ -21,6 +21,8 @@ executable embot
   other-modules:       Embot
                      , Embot.Action
                      , Embot.Command
+                     , Embot.Commands.Dice
+                     , Embot.Commands.Help
                      , Embot.Commands.SlackStateDump
                      , Embot.Config
                      , Embot.Driver
@@ -55,6 +57,7 @@ executable embot
                      , network-uri
                      , old-locale
                      , openssl-streams
+                     , random
                      , scientific
                      , template-haskell
                      , text

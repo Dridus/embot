@@ -3,13 +3,16 @@ module Embot.Wire
   , filterMapE, filterSameE
   , priorAndCurrentE, priorAndCurrent1E
   , diffE, diffByE, groupedDiffE, groupedDiffByE
+  , logDebugE
   ) where
 
 import           ClassyPrelude
 import           Control.Arrow ((>>>), arr)
+import           Control.Monad.Logger (MonadLogger, logDebug)
 import           Control.Wire (Wire, mkGenN, mkSFN)
-import           Control.Wire.Unsafe.Event (Event(Event, NoEvent), event)
+import           Control.Wire.Unsafe.Event (Event(Event, NoEvent), event, onEventM)
 import           Data.Algorithm.Diff (Diff, getDiffBy, getGroupedDiffBy)
+import           TextShow (TextShow, showt)
 
 accumEM
   :: Monad m
@@ -64,3 +67,8 @@ groupedDiffE =
 groupedDiffByE :: Monad m => (a -> a -> Bool) -> Wire s e m (Event [a]) (Event [Diff [a]])
 groupedDiffByE f =
   priorAndCurrentE >>> (arr . map . first $ fromMaybe []) >>> (arr . map . uncurry $ getGroupedDiffBy f)
+
+logDebugE :: (Monad m, MonadLogger m, TextShow a) => Text -> Wire s e m (Event a) (Event a)
+logDebugE prefix = onEventM $ \ a -> do
+  $logDebug $ prefix <> showt a
+  pure a

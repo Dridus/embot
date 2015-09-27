@@ -50,6 +50,17 @@ data RtmStartRp = RtmStartRp
   , _rtmStartIMs      :: [IM]
   , _rtmStartBots     :: [Bot] }
 
+testRtmStartRp :: RtmStartRp
+testRtmStartRp = RtmStartRp
+  { _rtmStartUrl      = "url"
+  , _rtmStartSelf     = Self (ID "UEMBOT") "Embot" mempty (Time 0) PresenceActive
+  , _rtmStartTeam     = Team (ID "TTEAM") "Team" Nothing "domain" Nothing False mempty
+  , _rtmStartUsers    = []
+  , _rtmStartChannels = []
+  , _rtmStartGroups   = []
+  , _rtmStartIMs      = []
+  , _rtmStartBots     = [] }
+
 data Self = Self
   { _selfID             :: ID User
   , _selfName           :: Text
@@ -150,7 +161,27 @@ data Message = Message
   , _messageEventTS      :: Maybe TS
   , _messageHidden       :: Bool
   , _messageAttachments  :: [Attachment]
-  , _messageInviter      :: Maybe (ID User) }
+  , _messageInviter      :: Maybe (ID User)
+  , _messageIsStarred    :: Maybe Bool
+  , _messagePinnedTo     :: [ID Channel]
+  , _messageReactions    :: [MessageReaction] }
+
+testMessage :: ID Chat -> ID User -> Text -> Message
+testMessage chat from text = Message
+  { _messageChat         = Just chat
+  , _messageUser         = from
+  , _messageSubtype      = Nothing
+  , _messageText         = text
+  , _messageTS           = TS "0"
+  , _messageEdited       = Nothing
+  , _messageDeletedTS    = Nothing
+  , _messageEventTS      = Nothing
+  , _messageHidden       = False
+  , _messageAttachments  = []
+  , _messageInviter      = Nothing
+  , _messageIsStarred    = Nothing
+  , _messagePinnedTo     = []
+  , _messageReactions    = [] }
 
 data MessageSubtype
   = BotMS | MeMS | ChangedMS | DeletedMS
@@ -161,6 +192,11 @@ data MessageSubtype
 data MessageEdited = MessageEdited
   { _messageEditedUser :: ID User
   , _messageEditedTS   :: TS }
+
+data MessageReaction = MessageReaction
+  { _messageReactionName :: Text
+  , _messageReactionCount :: Int
+  , _messageReactionUsers :: [ID User] }
 
 data Attachment = Attachment
   { _attachmentFallback   :: Text
@@ -402,6 +438,7 @@ deriving instance Eq Group
 deriving instance Eq IM
 deriving instance Eq Bot
 deriving instance Eq MessageSubtype
+deriving instance Eq MessageReaction
 deriving instance Eq Message
 deriving instance Eq MessageEdited
 deriving instance Eq Attachment
@@ -439,6 +476,7 @@ makeLenses ''Channel
 makeLenses ''Group
 makeLenses ''IM
 makeLenses ''Bot
+makeLenses ''MessageReaction
 makeLenses ''Message
 makeLenses ''MessageEdited
 makeLenses ''Attachment
@@ -482,6 +520,7 @@ deriveTextShow ''Bot
 deriveTextShow ''Message
 deriveTextShow ''MessageSubtype
 deriveTextShow ''MessageEdited
+deriveTextShow ''MessageReaction
 deriveTextShow ''Attachment
 deriveTextShow ''AttachmentField
 deriveTextShow ''SlackTracked
@@ -651,6 +690,9 @@ instance FromJSON Message where
     <*> o .:? "hidden" .!= False
     <*> o .:? "attachments" .!= []
     <*> o .:? "inviter"
+    <*> o .:? "is_starred"
+    <*> o .:? "pinned_to" .!= []
+    <*> o .:? "reactions" .!= []
 
 instance FromJSON MessageSubtype where
   parseJSON = withText "message subtype" $ \ case
@@ -681,6 +723,12 @@ instance FromJSON MessageEdited where
   parseJSON = withObject "message edited object" $ \ o -> MessageEdited
     <$> o .: "user"
     <*> o .: "ts"
+
+instance FromJSON MessageReaction where
+  parseJSON = withObject "message reaction object" $ \ o -> MessageReaction
+    <$> o .: "name"
+    <*> o .: "count"
+    <*> o .: "users"
 
 instance FromJSON Attachment where
   parseJSON = withObject "attachment object" $ \ o -> Attachment

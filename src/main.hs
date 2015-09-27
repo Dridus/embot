@@ -8,6 +8,7 @@ import           TextShow (showt)
 
 import           Embot (EmbotLogic, LoggingIO, embot, embotDefaultConfig)
 import           Embot.Command (Mention, mentions)
+import qualified Embot.Commands.Dice as Dice
 import qualified Embot.Commands.SlackStateDump as SlackStateDump
 import           Embot.Slack (RtmEvent, RtmStartRp)
 import qualified Embot.SlackState as SlackState
@@ -29,7 +30,8 @@ main = do
         onEventM logEvent -< event
         onEventM logMention -< mention
 
-        SlackStateDump.effects rtmStartRp slackState -< event
+        mconcat [ SlackStateDump.effects rtmStartRp slackState
+                , Dice.effects rtmStartRp ] -< event
 
     logEvent :: RtmEvent -> LoggingIO ()
     logEvent event =
